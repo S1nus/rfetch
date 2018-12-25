@@ -1,0 +1,11 @@
+[package]
+name = "rfetch"
+version = "0.1.0"
+authors = ["s1nus"]
+edition = "2018"
+
+[dependencies]
+hyper = "0.12"
+futures = "0.1.25"
+tokio = "0.1.13"
+rusqlite = "0.15.0"
