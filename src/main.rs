@@ -13,42 +13,73 @@ use tokio::prelude::*;
 use rusqlite::types::ToSql;
 use rusqlite::{Connection, NO_PARAMS};
 
-fn get_url(connection : &Connection, url : hyper::Uri) {
-    
-    let mut query = connection.prepare("SELECT * FROM requests WHERE url=?").unwrap();
-    let mut results = query.query(&[url.to_string()]);
+use time::Timespec;
 
-    match results {
-        Ok(res) => println!("Success!"),
-        Err(e) => println!("Error: {:?}", e),
+struct Request {
+    id: i32,
+    url: String,
+    status: String,
+    time_created: Timespec,
+    data: Option<Vec<u8>>,
+}
+
+fn get_url(conn: &Connection, url: hyper::Uri) {
+
+    let my_req = Request {
+        id: 0,
+        url: "yahoocom".to_string(),
+        status: "pending".to_string(),
+        time_created: time::get_time(),
+        data: None,
     };
+
+    conn.execute(
+        "INSERT INTO requests (url, status, time_created, data)
+        VALUES (?1, ?2, ?3, ?4)",
+        &[&my_req.url as &ToSql, &my_req.status as &ToSql, &my_req.time_created, &my_req.data],
+    ).unwrap();
+
+}
+
+fn check_request(conn: &Connection, url: hyper::Uri) {
+    let mut stmt = conn
+        .prepare("SELECT id, url, status, time_created, data FROM requests WHERE url=(?)")
+        .unwrap();
+
+    let requests_iter = stmt
+        .query_map(&["yahoocom".to_string()], |row| Request {
+            id: row.get(0),
+            url: row.get(1),
+            status: row.get(2),
+            time_created: row.get(3),
+            data: row.get(4),
+        }).unwrap();
+    for request in requests_iter {
+        println!("Found request {:?}", request.unwrap().url);
+    }
 }
 
 fn main() {
-    println!("Attempting to open SQLite Database...");
-
-    let conn = match Connection::open(Path::new("./query_database.db")) {
+    let conn = match Connection::open("./request_database.db") {
         Ok(conn) => conn,
-        Err(error) => {
-            panic!("Error opening SQLite database: {:?}", error);
-        },
+        Err(e) => panic!("Couldn't connect to SQLite: {}", e),
     };
 
-    let table_create = conn.execute(
+    let create_table = conn.execute(
         "CREATE TABLE requests (
-            id INTEGER PRIMARY KEY,
-            time_created TEXT NOT NULL,
-            url TEXT,
-            status TEXT,
-            data TEXT
+            id  INTEGER PRIMARY KEY,
+            url    TEXT NOT NULL,
+            status    TEXT NOT NULL,
+            time_created    TEXT NOT NULL,
+            data    BLOB
         )",
         NO_PARAMS,
     );
-
-    match table_create {
-        Ok(size) => println!("Table created"),
-        Err(_) => println!("Table appears to already exist"),
+    match create_table {
+        Ok(_) => println!("Created table."),
+        Err(e) => println!("Table seems to already exist."),
     };
 
-    get_url(&conn, "https://www.reddit.com/r/trees/new.json".parse().unwrap());
+    get_url(&conn, "http://google.com/".parse().unwrap());
+    check_request(&conn, "http://google.com/".parse().unwrap());
 }
